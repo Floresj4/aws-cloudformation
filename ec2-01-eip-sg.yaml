@@ -6,9 +6,9 @@ Resources:
       AvailabilityZone: us-east-1a
       ImageId: ami-1853ac65
       InstanceType: t2.micro
-        SecurityGroups:
-          - !Ref SSHSecurityGroup
-          - !Ref ServerSecurityGroup
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+        - !Ref ServerSecurityGroup
 
 #an elastic IP resource
   ElasticIP:
