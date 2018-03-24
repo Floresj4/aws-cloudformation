@@ -1,4 +1,5 @@
 ### AWS-CloudFormation Templates
+Exploring AWS CloudFormation templates...
 
 #### Ec2
 ##### ec2-00.yaml
