@@ -12,6 +12,7 @@ Resources:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: Api Gateway Example
+      Description: CloudFormation testing API with custom authorizor
 
   #model of data moving through the API
   UserModel:
@@ -38,7 +39,7 @@ Resources:
           - phone
 
   #resource, an API endpoint
-  UsersResoures:
+  UsersResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref RestApi
@@ -46,23 +47,26 @@ Resources:
       PathPart: user
 
   #method attached to resource/endpoint
+  #https://docs.aws.amazon.com/apigateway/api-reference/resource/integration/#type
+  #https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-apitgateway-method-integration.html#cfn-apigateway-method-integration-type
   UsersGet:
+    DependsOn: LambdaPermission
     Type: AWS::ApiGateway::Method
     Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref UsersResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
       Integration:
         #Lambda function-invoking action
-        #https://docs.aws.amazon.com/apigateway/api-reference/resource/integration/#type
-        Type: AWS
-        IntegrationHttpMethod: POST
-        #https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-apitgateway-method-integration.html#cfn-apigateway-method-integration-type
-        Uri: !Join ["", ["arn:aws:apigateway", !Ref "AWS::Region", ":lambda:path/2015/03/31/functions/", !GetAtt [Lambda, Arn], "/invocations"]]
+        Type: AWS_PROXY
+        IntegrationHttpMethod: ANY
         IntegrationResponses:
-          ResponseTemplates:
-            "application/json": "$input.json('$.body')"
-          ResponseParameters:
-            "method.response.header.Link": "integration.response.body.headers.next"
-          StatusCode: 200
+          - StatusCode: 200
+        Uri: !Join ["", ["arn:aws:apigateway:", !Ref "AWS::Region", ":lambda:path/2015/03/31/functions/", !GetAtt [Lambda, Arn], "/invocations"]]
         PassthroughBehavior: NEVER
+      MethodResponses:
+        - StatusCode: 200
 
   #lambda role to assume during invocation of function
   LambdaRole:
@@ -84,7 +88,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs: "*"
+                  - "logs:*"
                 Resource: "arn:aws:logs:*:*:*"
 
   #lambda function to execute behind API Gateway
@@ -100,3 +104,20 @@ Resources:
       Role: !GetAtt [LambdaRole, Arn]
       Runtime: nodejs6.10
       Timeout: 3
+
+  #permissions for ApiGateway to invoke lambda
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:invokeFunction"
+      FunctionName: !GetAtt [Lambda, Arn]
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Join ["", ["arn:aws:execute-api:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":", !Ref RestApi, "/*"]]
+
+  RestApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref RestApi
+      StageName: v1
+    DependsOn:
+      - UsersGet
