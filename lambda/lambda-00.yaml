@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Template for creating serverless API
+Description: Template for creating serverless function
 
 Parameters:
   S3Bucket:
