@@ -29,3 +29,5 @@ A JSON payload of
     }
     
 can be used to test the function through the AWS Management Console.
+
+Don't forget to delete your stacks :exclamation:
