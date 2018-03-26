@@ -7,6 +7,12 @@ Parameters:
       - t1.micro
       - t2.micro
     ConstraintDescription: must be a valid EC2 instance type
+  SecurityGroupPort:
+    Description: Port number for the security group
+    Type: Number
+    MinValue: 1150
+    MaxValue: 65535
+    ConstraintDescription: must be a valid number in the min-max range.
 
 Resources:
   MyEc2Instance:

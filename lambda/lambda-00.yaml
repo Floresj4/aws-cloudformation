@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template for creating serverless API
+
+Parameters:
+  S3Bucket:
+    Description: Bucket name where code archive exists
+    Type: String
+  S3Key:
+    Description: Archive key of code to deploy
+    Type: String
+  ExecutionRole:
+    Description: Execution role for lambda to assume during invocation
+    Type: String
+
+Resources:
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      Runtime: python3.6
+      FunctionName: HelloLambda
+      Handler: lambda-00.my_handler
+      Role: !Ref ExecutionRole
+      MemorySize: 128
+      Timeout: 5
