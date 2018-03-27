@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Template for creating serverless API
+Description: "AWS CloudFormation template - Lambda function behind API Gateway"
 
 Parameters:
   S3Bucket:
@@ -8,68 +8,21 @@ Parameters:
     Type: String
 
 Resources:
-  RestApi:
-    Type: AWS::ApiGateway::RestApi
+  #the lambda function to invoke
+  GreetingLambda:
+    Type: AWS::Lambda::Function
+    Description: A simple greeting function
     Properties:
-      Name: Api Gateway Example
-      Description: CloudFormation testing API with custom authorizor
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      FunctionName: GreetingLambda
+      Handler: lambda.handler
+      Role: !GetAtt [LambdaExecutionRole, Arn]
+      Runtime: nodejs6.10
 
-  #model of data moving through the API
-  UserModel:
-    Type: AWS::ApiGateway::Model
-    Properties:
-      ContentType: application/json
-      Name: User
-      RestApiId: !Ref RestApi
-      Schema:
-        "$schema": http://json-schema.org/draft-04/schema#
-        title: User
-        type: object
-        additionalProperties: false
-        properties:
-          uid:
-            type: string
-          email:
-            type: string
-          phone:
-            type: string
-        required:
-          - uid
-          - email
-          - phone
-
-  #resource, an API endpoint
-  UsersResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref RestApi
-      ParentId: !GetAtt [RestApi, RootResourceId]
-      PathPart: user
-
-  #method attached to resource/endpoint
-  #https://docs.aws.amazon.com/apigateway/api-reference/resource/integration/#type
-  #https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-apitgateway-method-integration.html#cfn-apigateway-method-integration-type
-  UsersGet:
-    DependsOn: LambdaPermission
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref RestApi
-      ResourceId: !Ref UsersResource
-      HttpMethod: ANY
-      AuthorizationType: NONE
-      Integration:
-        #Lambda function-invoking action
-        Type: AWS_PROXY
-        IntegrationHttpMethod: ANY
-        IntegrationResponses:
-          - StatusCode: 200
-        Uri: !Join ["", ["arn:aws:apigateway:", !Ref "AWS::Region", ":lambda:path/2015/03/31/functions/", !GetAtt [Lambda, Arn], "/invocations"]]
-        PassthroughBehavior: NEVER
-      MethodResponses:
-        - StatusCode: 200
-
-  #lambda role to assume during invocation of function
-  LambdaRole:
+  #the execution role the lambda will use
+  LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -80,44 +33,120 @@ Resources:
               Service: "lambda.amazonaws.com"
             Action:
               - "sts:AssumeRole"
-      Path: /
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  #Creating the RestApi
+  GreetingApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: Greeting API
+      Description: API used for Greeting requests
+      FailOnWarnings: true
+
+  #Permission for apigateway to invoke lambda
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:invokeFunction"
+      FunctionName: !GetAtt [GreetingLambda, Arn]
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Join ["", ["arn:aws:execute-api:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":", !Ref "GreetingApi", "/*"]]
+
+  #Allow ApiGateway to interact with CloudWatch
+  ApiGatewayCloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
       Policies:
-        - PolicyName: logs
+        - PolicyName: ApiGatewayLogsPolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
-                  - "logs:*"
-                Resource: "arn:aws:logs:*:*:*"
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - "logs:PutLogEvents"
+                  - "logs:GetLogEvents"
+                  - "logs:FilterLogEvents"
+                Resource: "*"
 
-  #lambda function to execute behind API Gateway
-  Lambda:
-    Type: AWS::Lambda::Function
+  #resource (role) uses to write cloudwatch logs
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
     Properties:
-      Code:
-        S3Bucket: !Ref S3Bucket
-        S3Key: !Ref S3Key
-      Description: Lambda function to test with API Gateway
-      Handler: lambda.handler
-      MemorySize: 128
-      Role: !GetAtt [LambdaRole, Arn]
-      Runtime: nodejs6.10
-      Timeout: 3
+      CloudWatchRoleArn: !GetAtt [ApiGatewayCloudWatchLogsRole, Arn]
 
-  #permissions for ApiGateway to invoke lambda
-  LambdaPermission:
-    Type: AWS::Lambda::Permission
+  #stage for API deployment
+  GreetingApiStage:
+    DependsOn: ApiGatewayAccount
+    Type: AWS::ApiGateway::Stage
     Properties:
-      Action: "lambda:invokeFunction"
-      FunctionName: !GetAtt [Lambda, Arn]
-      Principal: "apigateway.amazonaws.com"
-      SourceArn: !Join ["", ["arn:aws:execute-api:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":", !Ref RestApi, "/*"]]
+      DeploymentId: !Ref ApiDeployment
+      MethodSettings:
+        - DataTraceEnabled: true
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: "/*"
+      RestApiId: !Ref GreetingApi
+      StageName: LATEST
+      Variables:
+        Owner: floresj4
 
-  RestApiDeployment:
+  #deployment making the API callable over the internet
+  ApiDeployment:
     Type: AWS::ApiGateway::Deployment
-    Properties:
-      RestApiId: !Ref RestApi
-      StageName: v1
     DependsOn:
-      - UsersGet
+      - "GreetingRequestGET"
+#      - "GreetingRequestPOST"
+    Properties:
+      RestApiId: !Ref GreetingApi
+      StageName: DummyStage
+
+  #creates a resource (uri) in the API
+  GreetingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref GreetingApi
+      ParentId: !GetAtt [GreetingApi, RootResourceId]
+      PathPart: greeting
+
+  #define the parameters and body the clients must send in their requests
+  GreetingRequestGET:
+    DependsOn: LambdaPermission
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Join ["", ["arn:aws:apigateway:", !Ref "AWS::Region", ":lambda:path/2015-03-31/functions/", !GetAtt [GreetingLambda, Arn], "/invocations"]]
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              "application/json": "$input.json('$.body')"
+
+        #include request templates here
+
+      RequestParameters:
+        "method.request.querystring.name": false
+      ResourceId: !Ref GreetingResource
+      RestApiId: !Ref GreetingApi
+      MethodResponses:
+        - StatusCode: 200
+
+#  Outputs:
+#    RootUrl:
+#      Description: Root URL of the API gateway
+#      Value: !Join ["", ["https://", !Ref GreetingApi, ".execute-api.", !Ref "AWS::Region", ".amazonaws.com"]]
